@@ -30,7 +30,6 @@ function usePuzzleGame(initialPuzzleId = 1) {
 
   const [currentPuzzleId, setCurrentPuzzleId] = useState(getInitialPuzzleId);
   const currentPuzzle = useMemo(() => getPuzzleById(currentPuzzleId), [currentPuzzleId]);
-  const words = currentPuzzle.words;
 
   // Save puzzle ID to localStorage whenever it changes
   useEffect(() => {
@@ -42,8 +41,8 @@ function usePuzzleGame(initialPuzzleId = 1) {
     }
   }, [currentPuzzleId]);
 
-  // Generate solved state from words
-  const solvedState = useMemo(() => generateSolvedBoard(words), [words]);
+  // Generate solved state from current puzzle's words
+  const solvedState = useMemo(() => generateSolvedBoard(currentPuzzle.words), [currentPuzzle.words]);
 
   const [board, setBoard] = useState(() => shuffleBoard(solvedState));
   const [isWon, setIsWon] = useState(false);
@@ -61,44 +60,49 @@ function usePuzzleGame(initialPuzzleId = 1) {
 
   // Check win condition after each move
   useEffect(() => {
-    if (checkWin(board, words)) {
+    if (checkWin(board, currentPuzzle.words)) {
       setIsWon(true);
     }
-  }, [board, words]);
+  }, [board, currentPuzzle.words]);
 
   // Detect and track discovered words
   useEffect(() => {
-    const currentDiscovered = detectDiscoveredWords(board, words);
+    const currentDiscovered = detectDiscoveredWords(board, currentPuzzle.words);
 
     // Store currently positioned words for tile coloring
     setCurrentlyPositioned(currentDiscovered);
 
     // Update discovery order for new words
-    const newOrder = new Map(discoveryOrder);
-    let orderCounter = discoveryOrder.size;
+    setDiscoveryOrder(prev => {
+      const newOrder = new Map(prev);
+      let orderCounter = prev.size;
 
-    currentDiscovered.forEach(({ word }) => {
-      if (!newOrder.has(word)) {
-        newOrder.set(word, orderCounter++);
-      }
+      currentDiscovered.forEach(({ word }) => {
+        if (!newOrder.has(word)) {
+          newOrder.set(word, orderCounter++);
+        }
+      });
+
+      return newOrder;
     });
 
     // Track words that have ever been discovered
-    const newEverDiscovered = new Set(everDiscovered);
-    currentDiscovered.forEach(({ word }) => {
-      newEverDiscovered.add(word);
+    setEverDiscovered(prev => {
+      const newEverDiscovered = new Set(prev);
+      currentDiscovered.forEach(({ word }) => {
+        newEverDiscovered.add(word);
+      });
+
+      // Show all words that have ever been discovered
+      const persistedDiscovered = currentPuzzle.words
+        .filter(word => newEverDiscovered.has(word))
+        .map(word => ({ word, rowIndex: -1 })); // rowIndex not needed for display
+
+      setDiscoveredWords(persistedDiscovered);
+
+      return newEverDiscovered;
     });
-
-    setDiscoveryOrder(newOrder);
-    setEverDiscovered(newEverDiscovered);
-
-    // Show all words that have ever been discovered
-    const persistedDiscovered = words
-      .filter(word => newEverDiscovered.has(word))
-      .map(word => ({ word, rowIndex: -1 })); // rowIndex not needed for display
-
-    setDiscoveredWords(persistedDiscovered);
-  }, [board, words, discoveryOrder, everDiscovered]);
+  }, [board, currentPuzzle.words]);
 
   const handleTileClick = (index) => {
     // Don't allow moves if game is won or move is invalid
@@ -121,7 +125,12 @@ function usePuzzleGame(initialPuzzleId = 1) {
 
   // Reset board when puzzle changes
   useEffect(() => {
-    setBoard(shuffleBoard(solvedState));
+    const puzzle = getPuzzleById(currentPuzzleId);
+    const puzzleWords = puzzle.words;
+    console.log('Puzzle changed! ID:', currentPuzzleId, 'Words:', puzzleWords);
+    const newSolvedState = generateSolvedBoard(puzzleWords);
+    console.log('New board:', newSolvedState);
+    setBoard(shuffleBoard(newSolvedState));
     setIsWon(false);
     setMoveCount(0);
     setDiscoveredWords([]);
@@ -129,9 +138,10 @@ function usePuzzleGame(initialPuzzleId = 1) {
     setDiscoveryOrder(new Map());
     setEverDiscovered(new Set());
     setHintUsed(false);
-  }, [currentPuzzleId, solvedState]);
+  }, [currentPuzzleId]);
 
   const handleNextPuzzle = () => {
+    console.log('Next puzzle requested from ID:', currentPuzzleId);
     if (currentPuzzleId < getTotalPuzzles()) {
       setCurrentPuzzleId(prev => prev + 1);
     }
@@ -149,7 +159,7 @@ function usePuzzleGame(initialPuzzleId = 1) {
     moveCount,
     handleTileClick,
     handleShuffle,
-    words,
+    words: currentPuzzle.words,
     discoveredWords,
     currentlyPositioned,
     discoveryOrder,
